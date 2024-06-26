@@ -1,0 +1,8 @@
+# Ignorar la carpeta build
+build/
+
+# Ignorar archivos binarios
+*.exe
+*.out
+*.dll
+*.so
