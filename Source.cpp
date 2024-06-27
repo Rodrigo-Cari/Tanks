@@ -18,18 +18,10 @@ public:
 
 class Maze {
 public:
-  Maze(sf::Vector2u windowSize) {
-    shape.setSize(sf::Vector2f(windowSize.x * 0.8f, windowSize.y * 0.6f));
-    shape.setPosition(windowSize.x * 0.1f, windowSize.y * 0.2f);
-    shape.setFillColor(sf::Color::Transparent);
-    shape.setOutlineThickness(5);
-    shape.setOutlineColor(sf::Color::White);
-    updateBounds();
-    generateRandomMaze(windowSize);
-  }
+  Maze(sf::Vector2u windowSize) { generateRandomMaze(windowSize); }
 
   void generateRandomMaze(sf::Vector2u windowSize) {
-    float wallThickness = 5.0; // Grosor de las paredes
+    float wallThickness = 6.0; // Grosor de las paredes
 
     float startX = windowSize.x * 0.1f;
     float endX = windowSize.x * 0.9f;
@@ -39,47 +31,6 @@ public:
     float heightMaze = endY - startY;
     float separationX = widthMaze / 12;
     float separationY = heightMaze / 5;
-
-    // // Paredes horizontales
-    // walls.emplace_back(sf::Vector2f(startX, startY), sf::Vector2f(widthMaze,
-    // wallThickness)); walls.emplace_back(sf::Vector2f(startX, startY +
-    // separationY), sf::Vector2f(widthMaze, wallThickness));
-    // walls.emplace_back(sf::Vector2f(startX, startY + (2*separationY)),
-    // sf::Vector2f(widthMaze, wallThickness));
-    // walls.emplace_back(sf::Vector2f(startX, startY + (3*separationY)),
-    // sf::Vector2f(widthMaze, wallThickness));
-    // walls.emplace_back(sf::Vector2f(startX, startY + (4*separationY)),
-    // sf::Vector2f(widthMaze, wallThickness));
-    // walls.emplace_back(sf::Vector2f(startX, startY + (5*separationY)),
-    // sf::Vector2f(widthMaze, wallThickness));
-
-    // // Paredes verticales
-    // walls.emplace_back(sf::Vector2f(startX, startY),
-    // sf::Vector2f(wallThickness, heightMaze));
-    // walls.emplace_back(sf::Vector2f(startX + separationX, startY),
-    // sf::Vector2f(wallThickness, heightMaze));
-    // walls.emplace_back(sf::Vector2f(startX + (2*separationX), startY),
-    // sf::Vector2f(wallThickness, heightMaze));
-    // walls.emplace_back(sf::Vector2f(startX + (3*separationX), startY),
-    // sf::Vector2f(wallThickness, heightMaze));
-    // walls.emplace_back(sf::Vector2f(startX + (4*separationX), startY),
-    // sf::Vector2f(wallThickness, heightMaze));
-    // walls.emplace_back(sf::Vector2f(startX + (5*separationX), startY),
-    // sf::Vector2f(wallThickness, heightMaze));
-    // walls.emplace_back(sf::Vector2f(startX + (6*separationX), startY),
-    // sf::Vector2f(wallThickness, heightMaze));
-    // walls.emplace_back(sf::Vector2f(startX + (7*separationX), startY),
-    // sf::Vector2f(wallThickness, heightMaze));
-    // walls.emplace_back(sf::Vector2f(startX + (8*separationX), startY),
-    // sf::Vector2f(wallThickness, heightMaze));
-    // walls.emplace_back(sf::Vector2f(startX + (9*separationX), startY),
-    // sf::Vector2f(wallThickness, heightMaze));
-    // walls.emplace_back(sf::Vector2f(startX + (10*separationX), startY),
-    // sf::Vector2f(wallThickness, heightMaze));
-    // walls.emplace_back(sf::Vector2f(startX + (11*separationX), startY),
-    // sf::Vector2f(wallThickness, heightMaze));
-    // walls.emplace_back(sf::Vector2f(startX + (12*separationX), startY),
-    // sf::Vector2f(wallThickness, heightMaze));
 
     // Paredes horizontales
     walls.emplace_back(sf::Vector2f(startX, startY),
@@ -178,24 +129,19 @@ public:
                        sf::Vector2f(wallThickness, heightMaze));
   }
 
-  void updateBounds() { mazeBounds = shape.getGlobalBounds(); }
-
   void draw(sf::RenderWindow &window) {
-    window.draw(shape);
     for (auto &wall : walls) {
       wall.draw(window);
     }
   }
 
   std::vector<Wall> walls;
-  sf::RectangleShape shape;
-  sf::FloatRect mazeBounds;
 };
 
 class Bullet {
 public:
   Bullet(sf::Vector2f position, float angle, float speed, Maze *maze)
-      : maze(maze), lifetime(10),
+      : maze(maze), lifetime(7),
         velocity(cos(angle) * speed, sin(angle) * speed) {
     shape.setRadius(5.0f);
     shape.setFillColor(sf::Color::White);
@@ -204,23 +150,70 @@ public:
 
   void move(float deltaTime) {
     sf::Vector2f nextPosition = shape.getPosition() + velocity * deltaTime;
+    sf::FloatRect bulletBounds = shape.getGlobalBounds();
 
+    sf::FloatRect nextBounds(nextPosition.x, nextPosition.y, bulletBounds.width,
+                             bulletBounds.height);
+
+    const float adjustment = 2.0f;
+
+    bool collision = false;
     for (auto &wall : maze->walls) {
-      if (wall.shape.getGlobalBounds().intersects(shape.getGlobalBounds())) {
-        if (nextPosition.x < wall.shape.getPosition().x ||
-            nextPosition.x >
-                wall.shape.getPosition().x + wall.shape.getSize().x) {
-          velocity.x = -velocity.x;
+      sf::FloatRect wallBounds = wall.shape.getGlobalBounds();
+
+      if (nextBounds.intersects(wallBounds)) {
+        collision = true;
+        // Profundida de inteseccion 
+        float overlapLeft =
+            wallBounds.left - (nextBounds.left + nextBounds.width);
+        float overlapRight =
+            (nextBounds.left - wallBounds.left - wallBounds.width);
+        float overlapTop =
+            wallBounds.top - (nextBounds.top + nextBounds.height);
+        float overlapBottom =
+            (nextBounds.top - wallBounds.top - wallBounds.height);
+
+        // Encontrar overlap mas pequeño
+        float absOverlapLeft = std::abs(overlapLeft);
+        float absOverlapRight = std::abs(overlapRight);
+        float absOverlapTop = std::abs(overlapTop);
+        float absOverlapBottom = std::abs(overlapBottom);
+
+        float minOverlapX = std::min(absOverlapLeft, absOverlapRight);
+        float minOverlapY = std::min(absOverlapTop, absOverlapBottom);
+
+        if (minOverlapX < minOverlapY) {
+          // Manejar colision horizontal
+          if (absOverlapLeft < absOverlapRight) {
+            shape.move(overlapLeft, 0);
+            velocity.x = -velocity.x; // Bala viene desde la izquierda
+            shape.move(-adjustment, 0);
+          } else {
+            shape.move(overlapRight, 0);
+            velocity.x = -velocity.x; // Bala viene desde la derecha
+            shape.move(adjustment, 0);
+          }
+        } else {
+          // Manejar colision vertical
+          if (absOverlapTop < absOverlapBottom) {
+            shape.move(0, overlapTop);
+            velocity.y = -velocity.y; // Bala viene desde arriba
+            shape.move(0, -adjustment);
+          } else {
+            shape.move(0, overlapBottom);
+            velocity.y = -velocity.y; // Bala viene desde abajo
+            shape.move(0, adjustment);
+          }
         }
-        if (nextPosition.y < wall.shape.getPosition().y ||
-            nextPosition.y >
-                wall.shape.getPosition().y + wall.shape.getSize().y) {
-          velocity.y = -velocity.y;
-        }
+
+        break; 
       }
     }
 
-    shape.move(velocity * deltaTime);
+    if (!collision) {
+      shape.setPosition(nextPosition);
+    }
+
     lifetime -= deltaTime;
   }
 
@@ -306,9 +299,9 @@ public:
       sf::Vector2f bulletPos =
           sprite.getPosition() +
           sf::Vector2f(cos(sprite.getRotation() * PI / 180) *
-                           (sprite.getLocalBounds().width / 2 + 40),
+                           (sprite.getLocalBounds().width / 2 + 32),
                        sin(sprite.getRotation() * PI / 180) *
-                           (sprite.getLocalBounds().height / 2 + 40));
+                           (sprite.getLocalBounds().height / 2 + 32));
       bullets.emplace_back(bulletPos, sprite.getRotation() * PI / 180, 300.0f,
                            maze);
       timeSinceLastShot = 0.0f;
@@ -319,11 +312,12 @@ public:
 
   void detectBulletCollision(std::vector<Bullet> &bullets) {
     sf::FloatRect tankBounds = sprite.getGlobalBounds();
-    float reductionFactor = 0.1f;
-    tankBounds.width *= (1.0f - reductionFactor);
-    tankBounds.height *= (1.0f - reductionFactor);
-    tankBounds.left += sprite.getGlobalBounds().width * reductionFactor / 2.0f;
-    tankBounds.top += sprite.getGlobalBounds().height * reductionFactor / 2.0f;
+    // Reducir hitbox en un 20%
+    tankBounds.left += tankBounds.width * 0.1f;
+    tankBounds.top += tankBounds.height * 0.1f;
+    tankBounds.width *= 0.8f;
+    tankBounds.height *= 0.8f;
+
     auto it = bullets.begin();
     while (it != bullets.end()) {
       if (it->shape.getGlobalBounds().intersects(tankBounds)) {
@@ -336,10 +330,10 @@ public:
   }
 
   void update(float deltaTime, std::vector<Bullet> &bullets) {
-    detectBulletCollision(bullets);
+    shoot(bullets, deltaTime);
     move(deltaTime);
     rotate(deltaTime);
-    shoot(bullets, deltaTime);
+    detectBulletCollision(bullets);
   }
 
   void draw(sf::RenderWindow &window) { window.draw(sprite); }
