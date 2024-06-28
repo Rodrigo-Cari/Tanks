@@ -1,4 +1,5 @@
 #include <SFML/Graphics.hpp>
+#include <SFML/Graphics/Sprite.hpp>
 #include <cmath>
 #include <iostream>
 #include <memory>
@@ -230,7 +231,25 @@ public:
 };
 
 class Shooter {
-  virtual void shoot() = 0;
+public:
+  virtual void shoot(std::vector<std::unique_ptr<Bullet>> &bullets,
+                     float deltaTime, const sf::Sprite &sprite, Maze *maze) = 0;
+};
+
+class ShootDefault : public Shooter {
+public:
+  void shoot(std::vector<std::unique_ptr<Bullet>> &bullets, float deltaTime,
+             const sf::Sprite &sprite, Maze *maze) {
+    sf::Vector2f bulletPos =
+        sprite.getPosition() +
+        sf::Vector2f(cos(sprite.getRotation() * PI / 180) *
+                         (sprite.getLocalBounds().width / 2 + 32),
+                     sin(sprite.getRotation() * PI / 180) *
+                         (sprite.getLocalBounds().height / 2 + 32));
+    auto bullet = std::make_unique<Bullet>(
+        bulletPos, sprite.getRotation() * PI / 180, maze);
+    bullets.push_back(std::move(bullet));
+  }
 };
 
 class Tank {
@@ -300,17 +319,9 @@ public:
     }
   }
 
-  void shoot(std::vector<std::unique_ptr<Bullet>> &bullets, float deltaTime) {
+  void shoot(float deltaTime, std::vector<std::unique_ptr<Bullet>> &bullets) {
     if (sf::Keyboard::isKeyPressed(shootKey) && timeSinceLastShot >= fireRate) {
-      sf::Vector2f bulletPos =
-          sprite.getPosition() +
-          sf::Vector2f(cos(sprite.getRotation() * PI / 180) *
-                           (sprite.getLocalBounds().width / 2 + 32),
-                       sin(sprite.getRotation() * PI / 180) *
-                           (sprite.getLocalBounds().height / 2 + 32));
-      auto bullet = std::make_unique<Bullet>(
-          bulletPos, sprite.getRotation() * PI / 180, maze);
-      bullets.push_back(std::move(bullet));
+      shooter->shoot(bullets, deltaTime, sprite, maze);
       timeSinceLastShot = 0.0f;
     } else {
       timeSinceLastShot += deltaTime;
@@ -337,7 +348,7 @@ public:
   }
 
   void update(float deltaTime, std::vector<std::unique_ptr<Bullet>> &bullets) {
-    shoot(bullets, deltaTime);
+    shoot(deltaTime,bullets);
     move(deltaTime);
     rotate(deltaTime);
     detectBulletCollision(bullets);
@@ -353,6 +364,10 @@ public:
     leftKey = left;
     rightKey = right;
     shootKey = shoot;
+  }
+
+  void setShotter(Shooter * shooterInstance){
+    shooter = shooterInstance;
   }
 
 private:
@@ -371,6 +386,8 @@ private:
   sf::Keyboard::Key leftKey;
   sf::Keyboard::Key rightKey;
   sf::Keyboard::Key shootKey;
+
+  Shooter *shooter;
 };
 
 int main() {
@@ -385,6 +402,8 @@ int main() {
 
   Maze maze(window.getSize());
 
+  ShootDefault defaultShooter;
+
   Tank player1(texture, sf::Vector2f(280.f, 520.f), &maze);
   Tank player2(texture, sf::Vector2f(1500.f, 520.f), &maze);
 
@@ -392,6 +411,9 @@ int main() {
                       sf::Keyboard::D, sf::Keyboard::Space);
   player2.setControls(sf::Keyboard::Up, sf::Keyboard::Down, sf::Keyboard::Left,
                       sf::Keyboard::Right, sf::Keyboard::Enter);
+
+  player1.setShotter(&defaultShooter);
+  player2.setShotter(&defaultShooter);
 
   std::vector<std::unique_ptr<Bullet>> bullets;
 
