@@ -1,6 +1,7 @@
 #include <SFML/Graphics.hpp>
 #include <cmath>
 #include <iostream>
+#include <memory>
 #include <vector>
 
 const float PI = 3.14159265;
@@ -140,9 +141,15 @@ public:
 
 class Bullet {
 public:
-  Bullet(sf::Vector2f position, float angle, float speed, Maze *maze)
-      : maze(maze), lifetime(7),
-        velocity(cos(angle) * speed, sin(angle) * speed) {
+  sf::CircleShape shape;
+  sf::Vector2f velocity;
+  float speed;
+  Maze *maze;
+  float lifetime;
+
+  Bullet(sf::Vector2f position, float angle, Maze *maze)
+      : maze(maze), lifetime(10), speed(300.0f) {
+    velocity = sf::Vector2f(cos(angle) * speed, sin(angle) * speed);
     shape.setRadius(5.0f);
     shape.setFillColor(sf::Color::White);
     shape.setPosition(position);
@@ -163,7 +170,7 @@ public:
 
       if (nextBounds.intersects(wallBounds)) {
         collision = true;
-        // Profundida de inteseccion 
+        // Profundida de inteseccion
         float overlapLeft =
             wallBounds.left - (nextBounds.left + nextBounds.width);
         float overlapRight =
@@ -206,7 +213,7 @@ public:
           }
         }
 
-        break; 
+        break;
       }
     }
 
@@ -220,11 +227,10 @@ public:
   bool isAlive() { return lifetime >= 0; }
 
   void draw(sf::RenderWindow &window) { window.draw(shape); }
+};
 
-  sf::CircleShape shape;
-  sf::Vector2f velocity;
-  Maze *maze;
-  float lifetime;
+class Shooter {
+  virtual void shoot() = 0;
 };
 
 class Tank {
@@ -294,7 +300,7 @@ public:
     }
   }
 
-  void shoot(std::vector<Bullet> &bullets, float deltaTime) {
+  void shoot(std::vector<std::unique_ptr<Bullet>> &bullets, float deltaTime) {
     if (sf::Keyboard::isKeyPressed(shootKey) && timeSinceLastShot >= fireRate) {
       sf::Vector2f bulletPos =
           sprite.getPosition() +
@@ -302,15 +308,16 @@ public:
                            (sprite.getLocalBounds().width / 2 + 32),
                        sin(sprite.getRotation() * PI / 180) *
                            (sprite.getLocalBounds().height / 2 + 32));
-      bullets.emplace_back(bulletPos, sprite.getRotation() * PI / 180, 300.0f,
-                           maze);
+      auto bullet = std::make_unique<Bullet>(
+          bulletPos, sprite.getRotation() * PI / 180, maze);
+      bullets.push_back(std::move(bullet));
       timeSinceLastShot = 0.0f;
     } else {
       timeSinceLastShot += deltaTime;
     }
   }
 
-  void detectBulletCollision(std::vector<Bullet> &bullets) {
+  void detectBulletCollision(std::vector<std::unique_ptr<Bullet>> &bullets) {
     sf::FloatRect tankBounds = sprite.getGlobalBounds();
     // Reducir hitbox en un 20%
     tankBounds.left += tankBounds.width * 0.1f;
@@ -320,7 +327,7 @@ public:
 
     auto it = bullets.begin();
     while (it != bullets.end()) {
-      if (it->shape.getGlobalBounds().intersects(tankBounds)) {
+      if ((*it)->shape.getGlobalBounds().intersects(tankBounds)) {
         alive = false;
         it = bullets.erase(it);
       } else {
@@ -329,7 +336,7 @@ public:
     }
   }
 
-  void update(float deltaTime, std::vector<Bullet> &bullets) {
+  void update(float deltaTime, std::vector<std::unique_ptr<Bullet>> &bullets) {
     shoot(bullets, deltaTime);
     move(deltaTime);
     rotate(deltaTime);
@@ -386,7 +393,7 @@ int main() {
   player2.setControls(sf::Keyboard::Up, sf::Keyboard::Down, sf::Keyboard::Left,
                       sf::Keyboard::Right, sf::Keyboard::Enter);
 
-  std::vector<Bullet> bullets;
+  std::vector<std::unique_ptr<Bullet>> bullets;
 
   sf::Clock clock;
 
@@ -408,8 +415,8 @@ int main() {
 
     auto it = bullets.begin();
     while (it != bullets.end()) {
-      it->move(deltaTime);
-      if (!it->isAlive()) {
+      (*it)->move(deltaTime);
+      if (!(*it)->isAlive()) {
         it = bullets.erase(it);
       } else {
         ++it;
@@ -426,7 +433,7 @@ int main() {
       player2.draw(window);
     }
     for (const auto &bullet : bullets) {
-      window.draw(bullet.shape);
+      window.draw(bullet->shape);
     }
     window.display();
   }
