@@ -1,134 +1,163 @@
 #include <SFML/Graphics.hpp>
-#include <SFML/Graphics/Sprite.hpp>
 #include <cmath>
+#include <cstdlib>
+#include <ctime>
 #include <iostream>
 #include <memory>
+#include <stack>
 #include <vector>
 
 const float PI = 3.14159265;
 
+const int cols = 12;
+const int rows = 6;
+
+int index(int i, int j) {
+  if (i < 0 || j < 0 || i >= cols || j >= rows) {
+    return -1;
+  }
+  return i + j * cols;
+}
+
+class Cell {
+public:
+  int i;       // column index
+  int j;       // row index
+  int w = 130; // width of the cell
+  sf::RectangleShape lineTop;
+  sf::RectangleShape lineRight;
+  sf::RectangleShape lineBottom;
+  sf::RectangleShape lineLeft;
+  std::vector<bool> walls = {true, true, true, true};
+  bool visited = false;
+
+  Cell(int columnIndex, int rowIndex) : i(columnIndex), j(rowIndex) {
+    int x = 180 + i * w;
+    int y = 100 + j * w;
+    lineTop.setPosition(sf::Vector2f(x, y));
+    lineTop.setSize(sf::Vector2f(w, 6));
+    lineRight.setPosition(sf::Vector2f(x + w, y));
+    lineRight.setSize(sf::Vector2f(6, w));
+    lineBottom.setPosition(sf::Vector2f(x, y + w));
+    lineBottom.setSize(sf::Vector2f(w, 6));
+    lineLeft.setPosition(sf::Vector2f(x, y));
+    lineLeft.setSize(sf::Vector2f(6, w));
+  }
+
+  Cell *checkNeighbors(std::vector<Cell> &grid) {
+    std::vector<Cell *> neighbors;
+
+    int topIndex = index(i, j - 1);
+    int rightIndex = index(i + 1, j);
+    int bottomIndex = index(i, j + 1);
+    int leftIndex = index(i - 1, j);
+
+    if (topIndex != -1 && !grid[topIndex].visited)
+      neighbors.push_back(&grid[topIndex]);
+    if (rightIndex != -1 && !grid[rightIndex].visited)
+      neighbors.push_back(&grid[rightIndex]);
+    if (bottomIndex != -1 && !grid[bottomIndex].visited)
+      neighbors.push_back(&grid[bottomIndex]);
+    if (leftIndex != -1 && !grid[leftIndex].visited)
+      neighbors.push_back(&grid[leftIndex]);
+
+    if (!neighbors.empty()) {
+      int r = rand() % neighbors.size();
+      return neighbors[r];
+    }
+    return nullptr;
+  }
+
+  void draw(sf::RenderWindow &window) {
+    if (walls[0])
+      window.draw(lineTop);
+    if (walls[1])
+      window.draw(lineRight);
+    if (walls[2])
+      window.draw(lineBottom);
+    if (walls[3])
+      window.draw(lineLeft);
+  }
+
+  friend void removeWalls(Cell *a, Cell *b);
+};
+
+void removeWalls(Cell *a, Cell *b) {
+  int x = a->i - b->i;
+  if (x == 1) {
+    a->walls[3] = false;
+    b->walls[1] = false;
+  } else if (x == -1) {
+    a->walls[1] = false;
+    b->walls[3] = false;
+  }
+  int y = a->j - b->j;
+  if (y == 1) {
+    a->walls[0] = false;
+    b->walls[2] = false;
+  } else if (y == -1) {
+    a->walls[2] = false;
+    b->walls[0] = false;
+  }
+}
+
 class Wall {
 public:
+  sf::RectangleShape shape;
   Wall(sf::Vector2f position, sf::Vector2f size) {
     shape.setSize(size);
     shape.setPosition(position);
     shape.setFillColor(sf::Color::White);
   }
   void draw(sf::RenderWindow &window) { window.draw(shape); }
-  sf::RectangleShape shape;
 };
 
 class Maze {
 public:
-  Maze(sf::Vector2u windowSize) { generateRandomMaze(windowSize); }
+  Maze(sf::Vector2u windowSize) { generateRandomMaze(); }
 
-  void generateRandomMaze(sf::Vector2u windowSize) {
-    float wallThickness = 6.0; // Grosor de las paredes
+  void generateRandomMaze() {
+    for (int j = 0; j < rows; j++) {
+      for (int i = 0; i < cols; i++) {
+        grid.push_back(Cell(i, j));
+      }
+    }
 
-    float startX = windowSize.x * 0.1f;
-    float endX = windowSize.x * 0.9f;
-    float startY = windowSize.y * 0.2f;
-    float endY = windowSize.y * 0.8f;
-    float widthMaze = endX - startX;
-    float heightMaze = endY - startY;
-    float separationX = widthMaze / 12;
-    float separationY = heightMaze / 5;
+    current = &grid[0];
+    current->visited = true;
 
-    // Paredes horizontales
-    walls.emplace_back(sf::Vector2f(startX, startY),
-                       sf::Vector2f(widthMaze, wallThickness));
-    walls.emplace_back(sf::Vector2f(startX, startY + separationY),
-                       sf::Vector2f(2 * separationY, wallThickness));
-    walls.emplace_back(
-        sf::Vector2f(startX + (4 * separationX), startY + separationY),
-        sf::Vector2f(separationY, wallThickness));
-    walls.emplace_back(
-        sf::Vector2f(startX + (2 * separationX), startY + (2 * separationY)),
-        sf::Vector2f(2 * separationY, wallThickness));
-    walls.emplace_back(
-        sf::Vector2f(startX + (8 * separationX), startY + (2 * separationY)),
-        sf::Vector2f(separationY, wallThickness));
-    walls.emplace_back(
-        sf::Vector2f(startX + (11 * separationX), startY + (2 * separationY)),
-        sf::Vector2f(separationY, wallThickness));
-    walls.emplace_back(sf::Vector2f(startX, startY + (3 * separationY)),
-                       sf::Vector2f(separationY, wallThickness));
-    walls.emplace_back(
-        sf::Vector2f(startX + (2 * separationX), startY + (3 * separationY)),
-        sf::Vector2f(separationY, wallThickness));
-    walls.emplace_back(
-        sf::Vector2f(startX + (4 * separationX), startY + (3 * separationY)),
-        sf::Vector2f(separationY, wallThickness));
-    walls.emplace_back(
-        sf::Vector2f(startX + (6 * separationX), startY + (3 * separationY)),
-        sf::Vector2f(separationY, wallThickness));
-    walls.emplace_back(
-        sf::Vector2f(startX + (9 * separationX), startY + (3 * separationY)),
-        sf::Vector2f(2 * separationY, wallThickness));
-    walls.emplace_back(sf::Vector2f(startX, startY + (4 * separationY)),
-                       sf::Vector2f(separationY, wallThickness));
-    walls.emplace_back(
-        sf::Vector2f(startX + (4 * separationX), startY + (4 * separationY)),
-        sf::Vector2f(separationY, wallThickness));
-    walls.emplace_back(
-        sf::Vector2f(startX + (7 * separationX), startY + (4 * separationY)),
-        sf::Vector2f(separationY, wallThickness));
-    walls.emplace_back(
-        sf::Vector2f(startX + (10 * separationX), startY + (4 * separationY)),
-        sf::Vector2f(separationY, wallThickness));
-    walls.emplace_back(sf::Vector2f(startX, startY + (5 * separationY)),
-                       sf::Vector2f(widthMaze, wallThickness));
+    while (true) {
+      Cell *next = current->checkNeighbors(grid);
+      if (next != nullptr) {
+        next->visited = true;
+        stack.push(current);
+        removeWalls(current, next);
+        current = next;
+      } else if (!stack.empty()) {
+        current = stack.top();
+        stack.pop();
+      } else {
+        break;
+      }
+    }
 
-    // Paredes verticales
-    walls.emplace_back(sf::Vector2f(startX, startY),
-                       sf::Vector2f(wallThickness, heightMaze));
-    walls.emplace_back(
-        sf::Vector2f(startX + separationX, startY + (2 * separationY)),
-        sf::Vector2f(wallThickness, 3 * separationY));
-    walls.emplace_back(
-        sf::Vector2f(startX + (2 * separationX), startY + (3 * separationY)),
-        sf::Vector2f(wallThickness, separationY));
-    walls.emplace_back(
-        sf::Vector2f(startX + (3 * separationX), startY + separationY),
-        sf::Vector2f(wallThickness, separationY));
-    walls.emplace_back(
-        sf::Vector2f(startX + (3 * separationX), startY + (3 * separationY)),
-        sf::Vector2f(wallThickness, separationY));
-    walls.emplace_back(sf::Vector2f(startX + (4 * separationX), startY),
-                       sf::Vector2f(wallThickness, separationY));
-    walls.emplace_back(
-        sf::Vector2f(startX + (4 * separationX), startY + (4 * separationY)),
-        sf::Vector2f(wallThickness, separationY));
-    walls.emplace_back(
-        sf::Vector2f(startX + (5 * separationX), startY + (2 * separationY)),
-        sf::Vector2f(wallThickness, 3 * separationY));
-    walls.emplace_back(
-        sf::Vector2f(startX + (6 * separationX), startY + separationY),
-        sf::Vector2f(wallThickness, 3 * separationY));
-    walls.emplace_back(sf::Vector2f(startX + (7 * separationX), startY),
-                       sf::Vector2f(wallThickness, 4 * separationY));
-    walls.emplace_back(sf::Vector2f(startX + (8 * separationX), startY),
-                       sf::Vector2f(wallThickness, 2 * separationY));
-    walls.emplace_back(
-        sf::Vector2f(startX + (8 * separationX), startY + (3 * separationY)),
-        sf::Vector2f(wallThickness, separationY));
-    walls.emplace_back(
-        sf::Vector2f(startX + (9 * separationX), startY + separationY),
-        sf::Vector2f(wallThickness, separationY));
-    walls.emplace_back(
-        sf::Vector2f(startX + (9 * separationX), startY + (4 * separationY)),
-        sf::Vector2f(wallThickness, separationY));
-    walls.emplace_back(
-        sf::Vector2f(startX + (10 * separationX), startY + separationY),
-        sf::Vector2f(wallThickness, separationY));
-    walls.emplace_back(
-        sf::Vector2f(startX + (10 * separationX), startY + (3 * separationY)),
-        sf::Vector2f(wallThickness, separationY));
-    walls.emplace_back(
-        sf::Vector2f(startX + (11 * separationX), startY + separationY),
-        sf::Vector2f(wallThickness, 2 * separationY));
-    walls.emplace_back(sf::Vector2f(startX + (12 * separationX), startY),
-                       sf::Vector2f(wallThickness, heightMaze));
+    for (const auto &cell : grid) {
+      if (cell.walls[0]) {
+        walls.emplace_back(cell.lineTop.getPosition(), cell.lineTop.getSize());
+      }
+      if (cell.walls[1]) {
+        walls.emplace_back(cell.lineRight.getPosition(),
+                           cell.lineRight.getSize());
+      }
+      if (cell.walls[2]) {
+        walls.emplace_back(cell.lineBottom.getPosition(),
+                           cell.lineBottom.getSize());
+      }
+      if (cell.walls[3]) {
+        walls.emplace_back(cell.lineLeft.getPosition(),
+                           cell.lineLeft.getSize());
+      }
+    }
   }
 
   void draw(sf::RenderWindow &window) {
@@ -137,6 +166,9 @@ public:
     }
   }
 
+  std::vector<Cell> grid;
+  Cell *current;
+  std::stack<Cell *> stack;
   std::vector<Wall> walls;
 };
 
@@ -181,7 +213,7 @@ public:
         float overlapBottom =
             (nextBounds.top - wallBounds.top - wallBounds.height);
 
-        // Encontrar overlap mas pequeÃ±o
+        // Encontrar overlap mas pequeño
         float absOverlapLeft = std::abs(overlapLeft);
         float absOverlapRight = std::abs(overlapRight);
         float absOverlapTop = std::abs(overlapTop);
@@ -348,7 +380,7 @@ public:
   }
 
   void update(float deltaTime, std::vector<std::unique_ptr<Bullet>> &bullets) {
-    shoot(deltaTime,bullets);
+    shoot(deltaTime, bullets);
     move(deltaTime);
     rotate(deltaTime);
     detectBulletCollision(bullets);
@@ -366,9 +398,7 @@ public:
     shootKey = shoot;
   }
 
-  void setShotter(Shooter * shooterInstance){
-    shooter = shooterInstance;
-  }
+  void setShotter(Shooter *shooterInstance) { shooter = shooterInstance; }
 
 private:
   sf::Sprite sprite;
@@ -394,6 +424,8 @@ int main() {
   sf::RenderWindow window(sf::VideoMode::getDesktopMode(), "SFML Tank Game",
                           sf::Style::Fullscreen);
 
+  std::srand(std::time(nullptr));
+
   sf::Texture texture;
   if (!texture.loadFromFile("gTank.png")) {
     std::cerr << "Error al cargar la imagen" << std::endl;
@@ -405,7 +437,7 @@ int main() {
   ShootDefault defaultShooter;
 
   Tank player1(texture, sf::Vector2f(280.f, 520.f), &maze);
-  Tank player2(texture, sf::Vector2f(1500.f, 520.f), &maze);
+  Tank player2(texture, sf::Vector2f(1650.f, 520.f), &maze);
 
   player1.setControls(sf::Keyboard::W, sf::Keyboard::S, sf::Keyboard::A,
                       sf::Keyboard::D, sf::Keyboard::Space);
