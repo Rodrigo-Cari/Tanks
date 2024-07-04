@@ -1,4 +1,5 @@
 #include <SFML/Graphics.hpp>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
@@ -6,6 +7,65 @@
 #include <memory>
 #include <stack>
 #include <vector>
+
+struct OrientedBoundingBox {
+  std::array<sf::Vector2f, 4> points;
+
+  OrientedBoundingBox(const sf::Sprite &sprite) {
+    auto transform = sprite.getTransform();
+    auto local = sprite.getTextureRect();
+    points[0] = transform.transformPoint(0.f, 0.f);
+    points[1] = transform.transformPoint(local.width, 0.f);
+    points[2] = transform.transformPoint(local.width, local.height);
+    points[3] = transform.transformPoint(0.f, local.height);
+  }
+
+  // Project all four points of the OBB onto the given axis and return the dot
+  // products of the two outermost points
+  void projectOntoAxis(const sf::Vector2f &axis, float &min, float &max) {
+    min = (points[0].x * axis.x + points[0].y * axis.y);
+    max = min;
+    for (int j = 1; j < points.size(); ++j) {
+      auto projection = points[j].x * axis.x + points[j].y * axis.y;
+
+      if (projection < min)
+        min = projection;
+      if (projection > max)
+        max = projection;
+    }
+  }
+};
+
+bool boundingBoxTest(const sf::Sprite &sprite1, const sf::Sprite &sprite2) {
+  auto OBB1 = OrientedBoundingBox(sprite1);
+  auto OBB2 = OrientedBoundingBox(sprite2);
+
+  // Create the four distinct axes that are perpendicular to the edges of the
+  // two rectangles
+  std::array<sf::Vector2f, 4> axes = {{{OBB1.points[1].x - OBB1.points[0].x,
+                                        OBB1.points[1].y - OBB1.points[0].y},
+                                       {OBB1.points[1].x - OBB1.points[2].x,
+                                        OBB1.points[1].y - OBB1.points[2].y},
+                                       {OBB2.points[0].x - OBB2.points[3].x,
+                                        OBB2.points[0].y - OBB2.points[3].y},
+                                       {OBB2.points[0].x - OBB2.points[1].x,
+                                        OBB2.points[0].y - OBB2.points[1].y}}};
+
+  for (auto &axis : axes) {
+    float minOBB1, maxOBB1, minOBB2, maxOBB2;
+
+    // Project the points of both OBBs onto the axis ...
+    OBB1.projectOntoAxis(axis, minOBB1, maxOBB1);
+    OBB2.projectOntoAxis(axis, minOBB2, maxOBB2);
+
+    // ... and check whether the outermost projected points of both OBBs
+    // overlap. If this is not the case, the Separating Axis Theorem states that
+    // there can be no collision between the rectangles
+    if (!((minOBB2 <= maxOBB1) && (maxOBB2 >= minOBB1)))
+      return false;
+  }
+  return true;
+}
 
 const float PI = 3.14159265;
 
@@ -158,6 +218,17 @@ public:
                            cell.lineLeft.getSize());
       }
     }
+
+    for (const auto wall : walls) {
+      sf::Sprite wallSprite;
+      wallSprite.setTextureRect(
+          sf::IntRect(0, 0, wall.shape.getSize().x, wall.shape.getSize().y));
+      wallSprite.setPosition(wall.shape.getPosition());
+      wallSprite.setRotation(wall.shape.getRotation());
+      wallSprite.setScale(wall.shape.getScale());
+      wallSprite.setOrigin(wall.shape.getOrigin());
+      wallSprites.push_back(wallSprite);
+    }
   }
 
   void draw(sf::RenderWindow &window) {
@@ -170,6 +241,7 @@ public:
   Cell *current;
   std::stack<Cell *> stack;
   std::vector<Wall> walls;
+  std::vector<sf::Sprite> wallSprites;
 };
 
 class Bullet {
@@ -293,7 +365,9 @@ public:
     sprite.setOrigin(texture.getSize().x / 2.0f, texture.getSize().y / 2.0f);
     sprite.setPosition(position);
   }
+
   bool isAlive() const { return alive; }
+
   void move(float deltaTime) {
     sf::Vector2f movement(0.f, 0.f);
     if (sf::Keyboard::isKeyPressed(upKey)) {
@@ -309,15 +383,17 @@ public:
           sin(sprite.getRotation() * PI / 180) * moveSpeed * deltaTime;
     }
 
-    sf::FloatRect nextPos = sprite.getGlobalBounds();
-    nextPos.left += movement.x;
-    nextPos.top += movement.y;
-
     bool canMove = true;
-    for (auto &wall : maze->walls) {
-      if (wall.shape.getGlobalBounds().intersects(nextPos)) {
-        canMove = false;
-        break;
+    if (movement != sf::Vector2<float>(0, 0)) {
+      sf::Sprite tempSprite = sprite;
+      tempSprite.move(movement);
+
+      for (auto &wall : maze->wallSprites) {
+        if (boundingBoxTest(tempSprite, wall)) {
+          sprite.move(-movement);
+          canMove = false;
+          break;
+        }
       }
     }
 
@@ -337,11 +413,12 @@ public:
     if (rotationAmount != 0.f) {
       sf::Sprite tempSprite = sprite;
       tempSprite.rotate(rotationAmount);
-      sf::FloatRect nextPos = tempSprite.getGlobalBounds();
+
       bool canRotate = true;
-      for (auto &wall : maze->walls) {
-        if (wall.shape.getGlobalBounds().intersects(nextPos)) {
+      for (auto &wall : maze->wallSprites) {
+        if (boundingBoxTest(tempSprite, wall)) {
           canRotate = false;
+          sprite.rotate(-rotationAmount);
           break;
         }
       }
