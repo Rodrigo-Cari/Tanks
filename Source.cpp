@@ -8,6 +8,8 @@
 #include <stack>
 #include <vector>
 
+//eh?
+
 struct OrientedBoundingBox {
   std::array<sf::Vector2f, 4> points;
   OrientedBoundingBox(const sf::Sprite &sprite) {
@@ -271,7 +273,7 @@ public:
         float overlapBottom =
             (nextBounds.top - wallBounds.top - wallBounds.height);
 
-        // Encontrar overlap mas pequeño
+        // Encontrar overlap mas pequeï¿½o
         float absOverlapLeft = std::abs(overlapLeft);
         float absOverlapRight = std::abs(overlapRight);
         float absOverlapTop = std::abs(overlapTop);
