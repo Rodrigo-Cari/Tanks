@@ -8,10 +8,6 @@
 #include <stack>
 #include <vector>
 
-//eh?
-
-//Ao
-
 struct OrientedBoundingBox {
   std::array<sf::Vector2f, 4> points;
   OrientedBoundingBox(const sf::Sprite &sprite) {
