@@ -2,6 +2,7 @@
 #include <SFML/Graphics/Sprite.hpp>
 #include <SFML/System/Vector2.hpp>
 #include <SFML/Window/Keyboard.hpp>
+#include <SFML/Window/Window.hpp>
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -414,6 +415,7 @@ public:
   virtual void setMaxBullets(float max) = 0;
   virtual float getMaxBullets() const = 0;
   virtual void setCurrentBullets(float current_bullets) = 0;
+  virtual void setAlive() = 0;
 };
 
 class Tank : public TankInterface {
@@ -430,6 +432,7 @@ public:
   void setPosition(sf::Vector2f positon) { sprite.setPosition(positon); }
 
   bool isAlive() const { return alive; }
+  void setAlive() { alive = true; }
 
   void move(float deltaTime) {
     sf::Vector2f movement(0.f, 0.f);
@@ -621,6 +624,7 @@ public:
   void setCurrentBullets(float current_bullets) {
     tank->setCurrentBullets(current_bullets);
   }
+  void setAlive() { tank->setAlive(); }
 
 protected:
   TankInterface *tank;
@@ -712,52 +716,99 @@ public:
   void apply(TankInterface *&tank) { tank = new AttackBoostDecorator(tank); }
 };
 
-int main() {
-  sf::RenderWindow window(sf::VideoMode::getDesktopMode(), "SFML Tank Game",
-                          sf::Style::Fullscreen);
+class PowerUpFactory {
+public:
+  static std::unique_ptr<PowerUp>
+  createRandomPowerUp(std::vector<sf::Vector2f> cellCenters) {
+    int randomPosition = rand() % cellCenters.size();
+    int randomType = rand() % 2;
 
+    switch (randomType) {
+    case 0:
+      return std::make_unique<SpeedPowerUp>(cellCenters[randomPosition]);
+    case 1:
+      return std::make_unique<AttackPowerUp>(cellCenters[randomPosition]);
+    default:
+      return nullptr;
+    }
+  }
+};
+
+void resetGame(Tank &player1, Tank &player2, Maze &maze,
+               std::vector<std::unique_ptr<Bullet>> &bullets,
+               std::vector<std::unique_ptr<PowerUp>> &powers,
+               std::vector<sf::Vector2f> &cellCenters) {
+  bullets.clear();
+  powers.clear();
+  player1.setAlive();
+  player2.setAlive();
+
+  int r = rand() % cellCenters.size();
+  player1.setPosition(cellCenters[r]);
+
+  int r2;
+  do {
+    r2 = rand() % cellCenters.size();
+  } while (r2 == r);
+  player2.setPosition(cellCenters[r2]);
+
+  PowerUpFactory factory;
+  powers.push_back(factory.createRandomPowerUp(cellCenters));
+  powers.push_back(factory.createRandomPowerUp(cellCenters));
+  powers.push_back(factory.createRandomPowerUp(cellCenters));
+}
+
+void setFonts(sf::Font &font, sf::Text &player1ScoreText,
+              sf::Text &player2ScoreText, sf::RenderWindow &window) {
+  if (!font.loadFromFile("pixelated.ttf")) {
+    std::cerr << "Error al cargar la fuente" << std::endl;
+  }
+
+  player1ScoreText.setFont(font);
+  player1ScoreText.setCharacterSize(40);
+  player1ScoreText.setFillColor(sf::Color::White);
+  player1ScoreText.setStyle(sf::Text::Bold);
+  player1ScoreText.setPosition(80, window.getSize().y - 60);
+
+  player2ScoreText.setFont(font);
+  player2ScoreText.setCharacterSize(40);
+  player2ScoreText.setFillColor(sf::Color::White);
+  player2ScoreText.setStyle(sf::Text::Bold);
+  player2ScoreText.setPosition(window.getSize().x - 150,
+                               window.getSize().y - 60);
+}
+
+int main() {
+  sf::RenderWindow window(sf::VideoMode::getDesktopMode(), "Tank Game",
+                          sf::Style::Fullscreen);
   std::srand(std::time(nullptr));
 
-  if (!texture1.loadFromFile("gTank.png")) {
-    std::cerr << "Error al cargar la imagen" << std::endl;
-    return -1;
-  }
-  if (!texture2.loadFromFile("pTank.png")) {
-    std::cerr << "Error al cargar la imagen" << std::endl;
-    return -1;
-  }
-  if (!speed.loadFromFile("speed.png")) {
-    std::cerr << "Error al cargar la imagen" << std::endl;
-    return -1;
-  }
-  if (!attack.loadFromFile("attack.png")) {
+  sf::Font font;
+  sf::Text player1ScoreText;
+  sf::Text player2ScoreText;
+
+  setFonts(font, player1ScoreText, player2ScoreText, window);
+
+  if (!texture1.loadFromFile("gTank.png") ||
+      !texture2.loadFromFile("pTank.png") || !speed.loadFromFile("speed.png") ||
+      !attack.loadFromFile("attack.png")) {
     std::cerr << "Error al cargar la imagen" << std::endl;
     return -1;
   }
 
-  // Inizializar gameObjects
+  sf::Sprite player1Sprite(texture1);
+  sf::Sprite player2Sprite(texture2);
+
+  player1Sprite.setPosition(90, window.getSize().y - 100);
+  player2Sprite.setPosition(window.getSize().x - 140, window.getSize().y - 100);
+  int p1_wins = 0;
+  int p2_wins = 0;
+
   Maze maze(window.getSize());
-
   std::vector<sf::Vector2f> cellCenters = maze.getCellCenters();
 
-  int r = 0;
-  int r2;
-  Tank player1(
-      texture1,
-      [&] {
-        r = rand() % cellCenters.size();
-        return cellCenters[r];
-      }(),
-      &maze);
-  Tank player2(
-      texture2,
-      [&] {
-        do {
-          r2 = rand() % cellCenters.size();
-        } while (r2 == r);
-        return cellCenters[r2];
-      }(),
-      &maze);
+  Tank player1(texture1, cellCenters[rand() % cellCenters.size()], &maze);
+  Tank player2(texture2, cellCenters[rand() % cellCenters.size()], &maze);
 
   player1.setControls(sf::Keyboard::W, sf::Keyboard::S, sf::Keyboard::A,
                       sf::Keyboard::D, sf::Keyboard::Space);
@@ -771,15 +822,11 @@ int main() {
   std::vector<std::unique_ptr<Bullet>> bullets;
   std::vector<std::unique_ptr<PowerUp>> powers;
 
-  TankInterface *players[2];
-  players[0] = &player1;
-  players[1] = &player2;
+  TankInterface *players[2] = {&player1, &player2};
 
   sf::Clock clock;
 
-  // PRUEBAS POWERUPS
-  powers.push_back(std::make_unique<SpeedPowerUp>(cellCenters[4]));
-  powers.push_back(std::make_unique<AttackPowerUp>(cellCenters[2]));
+  resetGame(player1, player2, maze, bullets, powers, cellCenters);
 
   while (window.isOpen()) {
     sf::Event event;
@@ -828,6 +875,19 @@ int main() {
       }
     }
 
+    player1ScoreText.setString("P1: " + std::to_string(p1_wins));
+    player2ScoreText.setString("P2: " + std::to_string(p2_wins));
+
+    // Comprobar si hay un ganador
+    if (!players[0]->isAlive()) {
+      ++p2_wins;
+      resetGame(player1, player2, maze, bullets, powers, cellCenters);
+    }
+    if (!players[1]->isAlive()) {
+      ++p1_wins;
+      resetGame(player1, player2, maze, bullets, powers, cellCenters);
+    }
+
     // Renderizado
     window.clear();
     maze.draw(window);
@@ -842,6 +902,10 @@ int main() {
     for (const auto &power : powers) {
       power->draw(window);
     }
+    window.draw(player1ScoreText);
+    window.draw(player2ScoreText);
+    window.draw(player1Sprite);
+    window.draw(player2Sprite);
     window.display();
   }
 
