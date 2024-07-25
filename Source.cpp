@@ -350,8 +350,8 @@ public:
                       std::vector<std::unique_ptr<Bullet>> &bullets) = 0;
   virtual void draw(sf::RenderWindow &window) = 0;
   virtual void setShotter(Shooter *shooterInstance) = 0;
-  virtual void setMoveSpeed(float move_speed) = 0;
-  virtual float getMoveSpeed() const = 0;
+  void setMoveSpeed(float move_speed);
+  float getMoveSpeed() const;
 };
 
 class Tank : public TankInterface {
@@ -532,12 +532,6 @@ public:
     tank->setShotter(shooterInstance);
   }
 
-  void setMoveSpeed(float move_speed) override {
-    tank->setMoveSpeed(move_speed);
-  }
-
-  float getMoveSpeed() const override { return tank->getMoveSpeed(); }
-
 protected:
   TankInterface *tank;
 };
@@ -546,17 +540,19 @@ class SpeedBoostDecorator : public TankDecorator {
 public:
   SpeedBoostDecorator(TankInterface *tank, float boostAmount, float duration)
       : TankDecorator(tank), boostAmount(boostAmount), duration(duration),
-        elapsed(0.f) {}
+        elapsed(0.f), boostApplied(false) {}
 
   void update(float deltaTime,
               std::vector<std::unique_ptr<Bullet>> &bullets) override {
     elapsed += deltaTime;
-    if (elapsed < duration) {
+    if (!boostApplied) {
       tank->setMoveSpeed(tank->getMoveSpeed() + boostAmount);
+      boostApplied = true;
     }
     TankDecorator::update(deltaTime, bullets);
-    if (elapsed >= duration) {
+    if (elapsed >= duration && boostApplied) {
       tank->setMoveSpeed(tank->getMoveSpeed() - boostAmount);
+      boostApplied = false;
     }
   }
 
@@ -564,6 +560,7 @@ private:
   float boostAmount;
   float duration;
   float elapsed;
+  bool boostApplied;
 };
 
 int main() {
