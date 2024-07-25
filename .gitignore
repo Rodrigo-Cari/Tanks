@@ -1,6 +1,7 @@
 # Ignorar la carpeta build
 build/
 
+Source.txt
 # Ignorar archivos binarios
 *.exe
 *.out
