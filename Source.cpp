@@ -569,8 +569,13 @@ int main() {
 
   std::srand(std::time(nullptr));
 
-  sf::Texture texture;
-  if (!texture.loadFromFile("gTank.png")) {
+  sf::Texture texture1;
+  if (!texture1.loadFromFile("gTank.png")) {
+    std::cerr << "Error al cargar la imagen" << std::endl;
+    return -1;
+  }
+  sf::Texture texture2;
+  if (!texture2.loadFromFile("pTank.png")) {
     std::cerr << "Error al cargar la imagen" << std::endl;
     return -1;
   }
@@ -579,8 +584,8 @@ int main() {
 
   ShootDefault defaultShooter;
 
-  Tank player1(texture, sf::Vector2f(280.f, 520.f), &maze);
-  Tank player2(texture, sf::Vector2f(1650.f, 520.f), &maze);
+  Tank player1(texture1, sf::Vector2f(280.f, 520.f), &maze);
+  Tank player2(texture2, sf::Vector2f(1650.f, 520.f), &maze);
 
   player1.setControls(sf::Keyboard::W, sf::Keyboard::S, sf::Keyboard::A,
                       sf::Keyboard::D, sf::Keyboard::Space);
