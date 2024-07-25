@@ -1,4 +1,5 @@
 ﻿#include <SFML/Graphics.hpp>
+#include <SFML/Graphics/Sprite.hpp>
 #include <SFML/System/Vector2.hpp>
 #include <array>
 #include <cmath>
@@ -376,9 +377,7 @@ public:
     sprite.setPosition(position);
   }
 
-  void setPosition(sf::Vector2f positon){
-    sprite.setPosition(positon);
-  }
+  void setPosition(sf::Vector2f positon) { sprite.setPosition(positon); }
 
   bool isAlive() const { return alive; }
 
@@ -575,6 +574,26 @@ private:
   float elapsed;
 };
 
+class PowerUp {
+
+public:
+  sf::Sprite sprite;
+  float lifetime;
+
+  PowerUp(sf::Texture &texture, sf::Vector2f position) : lifetime(20) {
+    sprite.setOrigin(texture.getSize().x / 2.0f, texture.getSize().y / 2.0f);
+    sprite.setPosition(position);
+  }
+
+  void update(float deltaTime) { lifetime -= deltaTime; }
+
+  sf::Sprite getSprite() { return sprite; }
+
+  bool isAlive() { return lifetime >= 0; }
+
+  void draw(sf::RenderWindow &window) { window.draw(sprite); }
+};
+
 int main() {
   sf::RenderWindow window(sf::VideoMode::getDesktopMode(), "SFML Tank Game",
                           sf::Style::Fullscreen);
@@ -591,25 +610,42 @@ int main() {
     std::cerr << "Error al cargar la imagen" << std::endl;
     return -1;
   }
-
-  Maze maze(window.getSize());
-  std::vector<sf::Vector2f> cellCenters = maze.getCellCenters();
-
-  std::cout << "Posiciones de los centros de las celdas:" << std::endl;
-  for (const auto &center : cellCenters) {
-    std::cout << "(" << center.x << ", " << center.y << ")" << std::endl;
+  sf::Texture speed;
+  if (!speed.loadFromFile("speed.png")) {
+    std::cerr << "Error al cargar la imagen" << std::endl;
+    return -1;
   }
 
-  ShootDefault defaultShooter;
+  // Inizializar gameObjects
+  Maze maze(window.getSize());
 
-  Tank player1(texture1, sf::Vector2f(280.f, 520.f), &maze);
-  Tank player2(texture2, sf::Vector2f(1650.f, 520.f), &maze);
+  std::vector<sf::Vector2f> cellCenters = maze.getCellCenters();
+
+  int r = 0;
+  Tank player1(
+      texture1,
+      [&] {
+        r = rand() % cellCenters.size();
+        return cellCenters[r];
+      }(),
+      &maze);
+  Tank player2(
+      texture2,
+      [&] {
+        int r2;
+        do {
+          r2 = rand() % cellCenters.size();
+        } while (r2 == r);
+        return cellCenters[r2];
+      }(),
+      &maze);
 
   player1.setControls(sf::Keyboard::W, sf::Keyboard::S, sf::Keyboard::A,
                       sf::Keyboard::D, sf::Keyboard::Space);
   player2.setControls(sf::Keyboard::Up, sf::Keyboard::Down, sf::Keyboard::Left,
                       sf::Keyboard::Right, sf::Keyboard::Enter);
 
+  ShootDefault defaultShooter;
   player1.setShotter(&defaultShooter);
   player2.setShotter(&defaultShooter);
 
