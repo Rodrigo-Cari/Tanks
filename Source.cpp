@@ -582,6 +582,39 @@ private:
     bool boostApplied;
 };
 
+void restartGame(sf::RenderWindow& window, Maze& maze, Tank& player1, Tank& player2, std::vector<std::unique_ptr<Bullet>>& bullets, sf::Clock& clock, sf::Texture& texture, ShootDefault& defaultShooter) {
+    // Reiniciar el laberinto
+    maze = Maze(window.getSize());
+
+    // Reiniciar los tanques
+    player1 = Tank(texture, sf::Vector2f(280.f, 520.f), &maze);
+    player2 = Tank(texture, sf::Vector2f(1650.f, 520.f), &maze);
+
+    // Reiniciar los controles
+    player1.setControls(sf::Keyboard::W, sf::Keyboard::S, sf::Keyboard::A, sf::Keyboard::D, sf::Keyboard::Space);
+    player2.setControls(sf::Keyboard::Up, sf::Keyboard::Down, sf::Keyboard::Left, sf::Keyboard::Right, sf::Keyboard::Enter);
+
+    // Reiniciar el disparador
+    player1.setShotter(&defaultShooter);
+    player2.setShotter(&defaultShooter);
+
+    // Reiniciar las balas
+    bullets.clear();
+
+    // Reiniciar el reloj
+    clock.restart();
+}
+
+void pauseGame(bool& paused, sf::Clock& clock) {
+    if (paused) {
+        clock.restart();
+    }
+    else {
+        clock.restart();
+    }
+    paused = !paused;
+}
+
 int main() {
     sf::RenderWindow window(sf::VideoMode::getDesktopMode(), "SFML Tank Game",
         sf::Style::Fullscreen);
@@ -622,30 +655,39 @@ int main() {
     players[1] = &player2;
 
     sf::Clock clock;
+    bool paused = false;
 
     while (window.isOpen()) {
         sf::Event event;
         while (window.pollEvent(event)) {
             if (event.type == sf::Event::Closed)
                 window.close();
-        }
-
-        float deltaTime = clock.restart().asSeconds();
-
-        for (const auto& player : players) {
-            if (player->isAlive()) {
-                player->update(deltaTime, bullets);
+            if (event.type == sf::Event::KeyReleased && event.key.code == sf::Keyboard::R) {
+                restartGame(window, maze, player1, player2, bullets, clock, texture, defaultShooter);
+            }
+            if (event.type == sf::Event::KeyReleased && event.key.code == sf::Keyboard::P) {
+                pauseGame(paused, clock);
             }
         }
 
-        auto it = bullets.begin();
-        while (it != bullets.end()) {
-            (*it)->move(deltaTime);
-            if (!(*it)->isAlive()) {
-                it = bullets.erase(it);
+        if (!paused) {
+            float deltaTime = clock.restart().asSeconds();
+
+            for (const auto& player : players) {
+                if (player->isAlive()) {
+                    player->update(deltaTime, bullets);
+                }
             }
-            else {
-                ++it;
+
+            auto it = bullets.begin();
+            while (it != bullets.end()) {
+                (*it)->move(deltaTime);
+                if (!(*it)->isAlive()) {
+                    it = bullets.erase(it);
+                }
+                else {
+                    ++it;
+                }
             }
         }
 
