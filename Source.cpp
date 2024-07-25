@@ -404,7 +404,7 @@ public:
   virtual void update(float deltaTime,
                       std::vector<std::unique_ptr<Bullet>> &bullets) = 0;
   virtual void draw(sf::RenderWindow &window) = 0;
-  virtual void setShotter(Shooter *shooterInstance) = 0;
+  virtual void setShooter(std::unique_ptr<Shooter> shooter) = 0;
   virtual void setMoveSpeed(float move_speed) = 0;
   virtual float getMoveSpeed() const = 0;
   virtual void setRotationSpeed(float rotation_speed) = 0;
@@ -554,7 +554,9 @@ public:
     shootKey = shoot;
   }
 
-  void setShotter(Shooter *shooterInstance) { shooter = shooterInstance; }
+  void setShooter(std::unique_ptr<Shooter> shooterInstance) {
+    shooter = std::move(shooterInstance);
+  }
 
   void setMoveSpeed(float move_speed) { moveSpeed = move_speed; }
   float getMoveSpeed() const { return moveSpeed; }
@@ -593,7 +595,7 @@ private:
   sf::Keyboard::Key rightKey;
   sf::Keyboard::Key shootKey;
 
-  Shooter *shooter;
+  std::unique_ptr<Shooter> shooter;
 };
 
 class TankDecorator : public TankInterface {
@@ -606,8 +608,8 @@ public:
 
   void draw(sf::RenderWindow &window) { tank->draw(window); }
 
-  void setShotter(Shooter *shooterInstance) {
-    tank->setShotter(shooterInstance);
+  void setShooter(std::unique_ptr<Shooter> shooterInstance) {
+    tank->setShooter(std::move(shooterInstance));
   }
   bool isAlive() const { return tank->isAlive(); }
   void setMoveSpeed(float move_speed) { tank->setMoveSpeed(move_speed); };
@@ -680,25 +682,25 @@ public:
               std::vector<std::unique_ptr<Bullet>> &bullets) override {
     if (elapsed < duration && !boostApplied) {
       setFireRate(getFireRate() / 2);
-      setMaxBullets(getMaxBullets() * 4);
-      setCurrentBullets(20);
-      setShotter((small_));
+      setMaxBullets(getMaxBullets() * 5);
+      setCurrentBullets(25);
+      setShooter((std::move(small_)));
       boostApplied = true;
     }
 
     elapsed += deltaTime;
     if (elapsed >= duration && boostApplied) {
       setFireRate(getFireRate() * 2);
-      setMaxBullets(getMaxBullets() / 4);
-      setShotter((default_));
+      setMaxBullets(getMaxBullets() / 5);
+      setShooter((std::move(default_)));
       boostApplied = false;
     }
     TankDecorator::update(deltaTime, bullets);
   }
 
 private:
-  ShootSmall *small_ = new ShootSmall;
-  ShootDefault *default_ = new ShootDefault;
+  std::unique_ptr<ShootSmall> small_ = std::make_unique<ShootSmall>();
+  std::unique_ptr<ShootDefault> default_= std::make_unique<ShootDefault>();
   float timeSinceLastShot_;
   float fireRate_;
   float duration;
@@ -756,6 +758,11 @@ void resetGame(Tank &player1, Tank &player2, Maze &maze,
   powers.push_back(factory.createRandomPowerUp(cellCenters));
   powers.push_back(factory.createRandomPowerUp(cellCenters));
   powers.push_back(factory.createRandomPowerUp(cellCenters));
+
+  auto defaultShooter = std::make_unique<ShootDefault>();
+  player1.setShooter(std::move(defaultShooter));
+  auto defaultShooter1 = std::make_unique<ShootDefault>();
+  player2.setShooter(std::move(defaultShooter1));
 }
 
 void setFonts(sf::Font &font, sf::Text &player1ScoreText,
@@ -814,10 +821,6 @@ int main() {
                       sf::Keyboard::D, sf::Keyboard::Space);
   player2.setControls(sf::Keyboard::Up, sf::Keyboard::Down, sf::Keyboard::Left,
                       sf::Keyboard::Right, sf::Keyboard::Enter);
-
-  ShootDefault defaultShooter;
-  player1.setShotter(&defaultShooter);
-  player2.setShotter(&defaultShooter);
 
   std::vector<std::unique_ptr<Bullet>> bullets;
   std::vector<std::unique_ptr<PowerUp>> powers;
