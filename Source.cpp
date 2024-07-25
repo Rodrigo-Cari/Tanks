@@ -1,6 +1,7 @@
 ﻿#include <SFML/Graphics.hpp>
 #include <SFML/Graphics/Sprite.hpp>
 #include <SFML/System/Vector2.hpp>
+#include <SFML/Window/Keyboard.hpp>
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -9,6 +10,11 @@
 #include <memory>
 #include <stack>
 #include <vector>
+
+sf::Texture speed;
+sf::Texture texture2;
+sf::Texture texture1;
+sf::Texture attack;
 
 struct OrientedBoundingBox {
   std::array<sf::Vector2f, 4> points;
@@ -250,10 +256,10 @@ public:
   Maze *maze;
   float lifetime;
 
-  Bullet(sf::Vector2f position, float angle, Maze *maze)
+  Bullet(sf::Vector2f position, float angle, Maze *maze, float radius)
       : maze(maze), lifetime(10), speed(300.0f) {
     velocity = sf::Vector2f(cos(angle) * speed, sin(angle) * speed);
-    shape.setRadius(5.0f);
+    shape.setRadius(radius);
     shape.setFillColor(sf::Color::White);
     shape.setPosition(position);
   }
@@ -349,21 +355,65 @@ public:
                      sin(sprite.getRotation() * PI / 180) *
                          (sprite.getLocalBounds().height / 2 + 32));
     auto bullet = std::make_unique<Bullet>(
-        bulletPos, sprite.getRotation() * PI / 180, maze);
+        bulletPos, sprite.getRotation() * PI / 180, maze, 5.0f);
     bullets.push_back(std::move(bullet));
   }
 };
 
+class ShootSmall : public Shooter {
+public:
+  void shoot(std::vector<std::unique_ptr<Bullet>> &bullets, float deltaTime,
+             const sf::Sprite &sprite, Maze *maze) {
+    sf::Vector2f bulletPos =
+        sprite.getPosition() +
+        sf::Vector2f(cos(sprite.getRotation() * PI / 180) *
+                         (sprite.getLocalBounds().width / 2 + 32),
+                     sin(sprite.getRotation() * PI / 180) *
+                         (sprite.getLocalBounds().height / 2 + 32));
+    auto bullet = std::make_unique<Bullet>(
+        bulletPos, sprite.getRotation() * PI / 180, maze, 3.0f);
+    bullets.push_back(std::move(bullet));
+  }
+};
+
+class TankInterface;
+
+class PowerUp {
+protected:
+  sf::Sprite sprite;
+  float lifetime;
+
+public:
+  PowerUp(sf::Vector2f position) : lifetime(20) {}
+
+  void update(float deltaTime) { lifetime -= deltaTime; }
+
+  sf::Sprite getSprite() { return sprite; }
+
+  bool isAlive() { return lifetime >= 0; }
+
+  void draw(sf::RenderWindow &window) { window.draw(sprite); }
+
+  virtual void apply(TankInterface *&) = 0;
+};
+
 class TankInterface {
 public:
-  virtual ~TankInterface() = default;
   virtual bool isAlive() const = 0;
   virtual void update(float deltaTime,
                       std::vector<std::unique_ptr<Bullet>> &bullets) = 0;
   virtual void draw(sf::RenderWindow &window) = 0;
   virtual void setShotter(Shooter *shooterInstance) = 0;
-  void setMoveSpeed(float move_speed);
-  float getMoveSpeed() const;
+  virtual void setMoveSpeed(float move_speed) = 0;
+  virtual float getMoveSpeed() const = 0;
+  virtual void setRotationSpeed(float rotation_speed) = 0;
+  virtual float getRotationSpeed() const = 0;
+  virtual void setFireRate(float fire_rate) = 0;
+  virtual float getFireRate() const = 0;
+  virtual sf::Sprite getSprite() = 0;
+  virtual void setMaxBullets(float max) = 0;
+  virtual float getMaxBullets() const = 0;
+  virtual void setCurrentBullets(float current_bullets) = 0;
 };
 
 class Tank : public TankInterface {
@@ -505,6 +555,18 @@ public:
 
   void setMoveSpeed(float move_speed) { moveSpeed = move_speed; }
   float getMoveSpeed() const { return moveSpeed; }
+  void setRotationSpeed(float rotation_speed) {
+    rotationSpeed = rotation_speed;
+  }
+  float getRotationSpeed() const { return rotationSpeed; }
+  sf::Sprite getSprite() { return sprite; }
+  void setFireRate(float fire_rate) { fireRate = fire_rate; }
+  float getFireRate() const { return fireRate; }
+  void setMaxBullets(float max) { maxBullets = max; }
+  float getMaxBullets() const { return maxBullets; }
+  void setCurrentBullets(float current_bullets) {
+    currentBullets = current_bullets;
+  }
 
 private:
   sf::Sprite sprite;
@@ -535,15 +597,29 @@ class TankDecorator : public TankInterface {
 public:
   TankDecorator(TankInterface *tank) : tank(tank) {}
 
-  void update(float deltaTime,
-              std::vector<std::unique_ptr<Bullet>> &bullets) override {
+  void update(float deltaTime, std::vector<std::unique_ptr<Bullet>> &bullets) {
     tank->update(deltaTime, bullets);
   }
 
-  void draw(sf::RenderWindow &window) override { tank->draw(window); }
+  void draw(sf::RenderWindow &window) { tank->draw(window); }
 
-  void setShotter(Shooter *shooterInstance) override {
+  void setShotter(Shooter *shooterInstance) {
     tank->setShotter(shooterInstance);
+  }
+  bool isAlive() const { return tank->isAlive(); }
+  void setMoveSpeed(float move_speed) { tank->setMoveSpeed(move_speed); };
+  float getMoveSpeed() const { return tank->getMoveSpeed(); };
+  sf::Sprite getSprite() { return tank->getSprite(); }
+  void setRotationSpeed(float rotation_speed) {
+    tank->setRotationSpeed(rotation_speed);
+  }
+  float getRotationSpeed() const { return tank->getRotationSpeed(); }
+  void setFireRate(float fire_rate) { tank->setFireRate(fire_rate); }
+  float getFireRate() const { return tank->getFireRate(); }
+  void setMaxBullets(float max) { tank->setMaxBullets(max); }
+  float getMaxBullets() const { return tank->getMaxBullets(); }
+  void setCurrentBullets(float current_bullets) {
+    tank->setCurrentBullets(current_bullets);
   }
 
 protected:
@@ -552,46 +628,88 @@ protected:
 
 class SpeedBoostDecorator : public TankDecorator {
 public:
-  SpeedBoostDecorator(TankInterface *tank, float boostAmount, float duration)
-      : TankDecorator(tank), boostAmount(boostAmount), duration(duration),
-        elapsed(0.f) {}
+  SpeedBoostDecorator(TankInterface *tank)
+      : TankDecorator(tank), boostAmount(100), duration(15), elapsed(0.f),
+        boostApplied(false) {}
 
   void update(float deltaTime,
               std::vector<std::unique_ptr<Bullet>> &bullets) override {
+    if (elapsed < duration && !boostApplied) {
+      setMoveSpeed(getMoveSpeed() + boostAmount);
+      setRotationSpeed(getRotationSpeed() + boostAmount);
+      boostApplied = true;
+    }
+
     elapsed += deltaTime;
-    if (elapsed < duration) {
-      tank->setMoveSpeed(tank->getMoveSpeed() + boostAmount);
+    if (elapsed >= duration && boostApplied) {
+      setMoveSpeed(getMoveSpeed() - boostAmount);
+      setRotationSpeed(getRotationSpeed() - boostAmount);
+      boostApplied = false;
     }
+
     TankDecorator::update(deltaTime, bullets);
-    if (elapsed >= duration) {
-      tank->setMoveSpeed(tank->getMoveSpeed() - boostAmount);
-    }
   }
 
 private:
   float boostAmount;
   float duration;
   float elapsed;
+  bool boostApplied;
 };
 
-class PowerUp {
-
+class SpeedPowerUp : public PowerUp {
 public:
-  sf::Sprite sprite;
-  float lifetime;
-
-  PowerUp(sf::Texture &texture, sf::Vector2f position) : lifetime(20) {
-    sprite.setOrigin(texture.getSize().x / 2.0f, texture.getSize().y / 2.0f);
+  SpeedPowerUp(sf::Vector2f position) : PowerUp(position) {
+    sprite.setTexture(speed);
+    sprite.setOrigin(speed.getSize().x / 2.0f, speed.getSize().y / 2.0f);
     sprite.setPosition(position);
   }
+  void apply(TankInterface *&tank) { tank = new SpeedBoostDecorator(tank); }
+};
 
-  void update(float deltaTime) { lifetime -= deltaTime; }
+class AttackBoostDecorator : public TankDecorator {
+public:
+  AttackBoostDecorator(TankInterface *tank)
+      : TankDecorator(tank), duration(10), elapsed(0.f), boostApplied(false) {}
 
-  sf::Sprite getSprite() { return sprite; }
+  void update(float deltaTime,
+              std::vector<std::unique_ptr<Bullet>> &bullets) override {
+    if (elapsed < duration && !boostApplied) {
+      setFireRate(getFireRate() / 2);
+      setMaxBullets(getMaxBullets() * 4);
+      setCurrentBullets(20);
+      setShotter((small_));
+      boostApplied = true;
+    }
 
-  bool isAlive() { return lifetime >= 0; }
+    elapsed += deltaTime;
+    if (elapsed >= duration && boostApplied) {
+      setFireRate(getFireRate() * 2);
+      setMaxBullets(getMaxBullets() / 4);
+      setShotter((default_));
+      boostApplied = false;
+    }
+    TankDecorator::update(deltaTime, bullets);
+  }
 
-  void draw(sf::RenderWindow &window) { window.draw(sprite); }
+private:
+  ShootSmall *small_ = new ShootSmall;
+  ShootDefault *default_ = new ShootDefault;
+  float timeSinceLastShot_;
+  float fireRate_;
+  float duration;
+  float elapsed;
+  bool boostApplied;
+};
+
+class AttackPowerUp : public PowerUp {
+public:
+  AttackPowerUp(sf::Vector2f position) : PowerUp(position) {
+    sprite.setTexture(attack);
+    sprite.setOrigin(attack.getSize().x / 2.0f, attack.getSize().y / 2.0f);
+    sprite.setPosition(position);
+  }
+  void apply(TankInterface *&tank) { tank = new AttackBoostDecorator(tank); }
 };
 
 int main() {
@@ -600,18 +718,19 @@ int main() {
 
   std::srand(std::time(nullptr));
 
-  sf::Texture texture1;
   if (!texture1.loadFromFile("gTank.png")) {
     std::cerr << "Error al cargar la imagen" << std::endl;
     return -1;
   }
-  sf::Texture texture2;
   if (!texture2.loadFromFile("pTank.png")) {
     std::cerr << "Error al cargar la imagen" << std::endl;
     return -1;
   }
-  sf::Texture speed;
   if (!speed.loadFromFile("speed.png")) {
+    std::cerr << "Error al cargar la imagen" << std::endl;
+    return -1;
+  }
+  if (!attack.loadFromFile("attack.png")) {
     std::cerr << "Error al cargar la imagen" << std::endl;
     return -1;
   }
@@ -622,6 +741,7 @@ int main() {
   std::vector<sf::Vector2f> cellCenters = maze.getCellCenters();
 
   int r = 0;
+  int r2;
   Tank player1(
       texture1,
       [&] {
@@ -632,7 +752,6 @@ int main() {
   Tank player2(
       texture2,
       [&] {
-        int r2;
         do {
           r2 = rand() % cellCenters.size();
         } while (r2 == r);
@@ -650,11 +769,17 @@ int main() {
   player2.setShotter(&defaultShooter);
 
   std::vector<std::unique_ptr<Bullet>> bullets;
+  std::vector<std::unique_ptr<PowerUp>> powers;
+
   TankInterface *players[2];
   players[0] = &player1;
   players[1] = &player2;
 
   sf::Clock clock;
+
+  // PRUEBAS POWERUPS
+  powers.push_back(std::make_unique<SpeedPowerUp>(cellCenters[4]));
+  powers.push_back(std::make_unique<AttackPowerUp>(cellCenters[2]));
 
   while (window.isOpen()) {
     sf::Event event;
@@ -671,6 +796,7 @@ int main() {
       }
     }
 
+    // Manejo de balas
     auto it = bullets.begin();
     while (it != bullets.end()) {
       (*it)->move(deltaTime);
@@ -678,6 +804,27 @@ int main() {
         it = bullets.erase(it);
       } else {
         ++it;
+      }
+    }
+
+    // Manejo de PowerUps
+    auto it2 = powers.begin();
+    while (it2 != powers.end()) {
+      (*it2)->update(deltaTime);
+
+      bool collected = false;
+      for (auto &player : players) {
+        if ((*it2)->getSprite().getGlobalBounds().intersects(
+                player->getSprite().getGlobalBounds())) {
+          (*it2)->apply(player);
+          collected = true;
+          break;
+        }
+      }
+      if (collected) {
+        it2 = powers.erase(it2);
+      } else {
+        ++it2;
       }
     }
 
@@ -691,6 +838,9 @@ int main() {
     }
     for (const auto &bullet : bullets) {
       window.draw(bullet->shape);
+    }
+    for (const auto &power : powers) {
+      power->draw(window);
     }
     window.display();
   }
