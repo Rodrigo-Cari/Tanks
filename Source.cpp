@@ -10,7 +10,6 @@
 
 struct OrientedBoundingBox {
     std::array<sf::Vector2f, 4> points;
-
     OrientedBoundingBox(const sf::Sprite& sprite) {
         auto transform = sprite.getTransform();
         auto local = sprite.getTextureRect();
@@ -19,9 +18,6 @@ struct OrientedBoundingBox {
         points[2] = transform.transformPoint(local.width, local.height);
         points[3] = transform.transformPoint(0.f, local.height);
     }
-
-    // Project all four points of the OBB onto the given axis and return the dot
-    // products of the two outermost points
     void projectOntoAxis(const sf::Vector2f& axis, float& min, float& max) {
         min = (points[0].x * axis.x + points[0].y * axis.y);
         max = min;
@@ -39,9 +35,6 @@ struct OrientedBoundingBox {
 bool boundingBoxTest(const sf::Sprite& sprite1, const sf::Sprite& sprite2) {
     auto OBB1 = OrientedBoundingBox(sprite1);
     auto OBB2 = OrientedBoundingBox(sprite2);
-
-    // Create the four distinct axes that are perpendicular to the edges of the
-    // two rectangles
     std::array<sf::Vector2f, 4> axes = { {{OBB1.points[1].x - OBB1.points[0].x,
                                           OBB1.points[1].y - OBB1.points[0].y},
                                          {OBB1.points[1].x - OBB1.points[2].x,
@@ -50,17 +43,10 @@ bool boundingBoxTest(const sf::Sprite& sprite1, const sf::Sprite& sprite2) {
                                           OBB2.points[0].y - OBB2.points[3].y},
                                          {OBB2.points[0].x - OBB2.points[1].x,
                                           OBB2.points[0].y - OBB2.points[1].y}} };
-
     for (auto& axis : axes) {
         float minOBB1, maxOBB1, minOBB2, maxOBB2;
-
-        // Project the points of both OBBs onto the axis ...
         OBB1.projectOntoAxis(axis, minOBB1, maxOBB1);
         OBB2.projectOntoAxis(axis, minOBB2, maxOBB2);
-
-        // ... and check whether the outermost projected points of both OBBs
-        // overlap. If this is not the case, the Separating Axis Theorem states that
-        // there can be no collision between the rectangles
         if (!((minOBB2 <= maxOBB1) && (maxOBB2 >= minOBB1)))
             return false;
     }
@@ -299,7 +285,7 @@ public:
                 float overlapBottom =
                     (nextBounds.top - wallBounds.top - wallBounds.height);
 
-                // Encontrar overlap mas pequeño
+                // Encontrar overlap mas peque�o
                 float absOverlapLeft = std::abs(overlapLeft);
                 float absOverlapRight = std::abs(overlapRight);
                 float absOverlapTop = std::abs(overlapTop);
@@ -373,11 +359,24 @@ public:
     }
 };
 
-class Tank {
+class TankInterface {
+public:
+    virtual ~TankInterface() = default;
+    virtual bool isAlive() const = 0;
+    virtual void update(float deltaTime,
+        std::vector<std::unique_ptr<Bullet>>& bullets) = 0;
+    virtual void draw(sf::RenderWindow& window) = 0;
+    virtual void setShotter(Shooter* shooterInstance) = 0;
+    void setMoveSpeed(float move_speed);
+    float getMoveSpeed() const;
+};
+
+class Tank : public TankInterface {
 public:
     Tank(sf::Texture& texture, sf::Vector2f position, Maze* maze)
         : maze(maze), alive(true), moveSpeed(200.0f), rotationSpeed(200.0f),
-        fireRate(0.4f), timeSinceLastShot(0.0f) {
+        fireRate(0.4f), timeSinceLastShot(0.0f), maxBullets(5),
+        currentBullets(5), reloadTime(4.0f), timeSinceLastReload(0.0f) {
         sprite.setTexture(texture);
         sprite.setOrigin(texture.getSize().x / 2.0f, texture.getSize().y / 2.0f);
         sprite.setPosition(position);
@@ -446,12 +445,24 @@ public:
     }
 
     void shoot(float deltaTime, std::vector<std::unique_ptr<Bullet>>& bullets) {
-        if (sf::Keyboard::isKeyPressed(shootKey) && timeSinceLastShot >= fireRate) {
+        if (sf::Keyboard::isKeyPressed(shootKey) && timeSinceLastShot >= fireRate &&
+            currentBullets > 0) {
             shooter->shoot(bullets, deltaTime, sprite, maze);
             timeSinceLastShot = 0.0f;
+            --currentBullets;
         }
         else {
             timeSinceLastShot += deltaTime;
+        }
+    }
+
+    void reload(float deltaTime) {
+        timeSinceLastReload += deltaTime;
+        if (timeSinceLastReload >= reloadTime) {
+            if (currentBullets < maxBullets) {
+                ++currentBullets;
+            }
+            timeSinceLastReload = 0.0f;
         }
     }
 
@@ -477,6 +488,7 @@ public:
 
     void update(float deltaTime, std::vector<std::unique_ptr<Bullet>>& bullets) {
         shoot(deltaTime, bullets);
+        reload(deltaTime);
         move(deltaTime);
         rotate(deltaTime);
         detectBulletCollision(bullets);
@@ -496,6 +508,9 @@ public:
 
     void setShotter(Shooter* shooterInstance) { shooter = shooterInstance; }
 
+    void setMoveSpeed(float move_speed) { moveSpeed = move_speed; }
+    float getMoveSpeed() const { return moveSpeed; }
+
 private:
     sf::Sprite sprite;
     Maze* maze;
@@ -504,6 +519,11 @@ private:
     float rotationSpeed;
     float fireRate;
     float timeSinceLastShot;
+
+    int maxBullets;
+    int currentBullets;
+    float reloadTime;
+    float timeSinceLastReload;
 
     bool alive;
 
@@ -514,6 +534,52 @@ private:
     sf::Keyboard::Key shootKey;
 
     Shooter* shooter;
+};
+
+class TankDecorator : public TankInterface {
+public:
+    TankDecorator(TankInterface* tank) : tank(tank) {}
+
+    void update(float deltaTime,
+        std::vector<std::unique_ptr<Bullet>>& bullets) override {
+        tank->update(deltaTime, bullets);
+    }
+
+    void draw(sf::RenderWindow& window) override { tank->draw(window); }
+
+    void setShotter(Shooter* shooterInstance) override {
+        tank->setShotter(shooterInstance);
+    }
+
+protected:
+    TankInterface* tank;
+};
+
+class SpeedBoostDecorator : public TankDecorator {
+public:
+    SpeedBoostDecorator(TankInterface* tank, float boostAmount, float duration)
+        : TankDecorator(tank), boostAmount(boostAmount), duration(duration),
+        elapsed(0.f), boostApplied(false) {}
+
+    void update(float deltaTime,
+        std::vector<std::unique_ptr<Bullet>>& bullets) override {
+        elapsed += deltaTime;
+        if (!boostApplied) {
+            tank->setMoveSpeed(tank->getMoveSpeed() + boostAmount);
+            boostApplied = true;
+        }
+        TankDecorator::update(deltaTime, bullets);
+        if (elapsed >= duration && boostApplied) {
+            tank->setMoveSpeed(tank->getMoveSpeed() - boostAmount);
+            boostApplied = false;
+        }
+    }
+
+private:
+    float boostAmount;
+    float duration;
+    float elapsed;
+    bool boostApplied;
 };
 
 int main() {
@@ -551,6 +617,9 @@ int main() {
     player2.setShotter(&defaultShooter);
 
     std::vector<std::unique_ptr<Bullet>> bullets;
+    TankInterface* players[2];
+    players[0] = &player1;
+    players[1] = &player2;
 
     sf::Clock clock;
 
@@ -563,11 +632,10 @@ int main() {
 
         float deltaTime = clock.restart().asSeconds();
 
-        if (player1.isAlive()) {
-            player1.update(deltaTime, bullets);
-        }
-        if (player2.isAlive()) {
-            player2.update(deltaTime, bullets);
+        for (const auto& player : players) {
+            if (player->isAlive()) {
+                player->update(deltaTime, bullets);
+            }
         }
 
         auto it = bullets.begin();
@@ -584,11 +652,10 @@ int main() {
         // Renderizado
         window.clear();
         maze.draw(window);
-        if (player1.isAlive()) {
-            player1.draw(window);
-        }
-        if (player2.isAlive()) {
-            player2.draw(window);
+        for (const auto& player : players) {
+            if (player->isAlive()) {
+                player->draw(window);
+            }
         }
         for (const auto& bullet : bullets) {
             window.draw(bullet->shape);
